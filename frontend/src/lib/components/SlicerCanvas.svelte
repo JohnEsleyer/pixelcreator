@@ -47,10 +47,31 @@
   function handleMouseDown(e: MouseEvent) {
     if (!sourceFrame) return;
 
-    if (e.button === 1 || e.button === 2 || e.shiftKey) {
+    // Middle Click or Shift + Left Drag -> Pan
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       e.preventDefault();
       isPanning = true;
       panStart = { x: e.clientX - model.panX, y: e.clientY - model.panY };
+      return;
+    }
+
+    // Right Click -> Unassign / Toggle Cell
+    if (e.button === 2) {
+      e.preventDefault();
+      const coords = screenToImageCoords(e);
+      if (!coords) return;
+
+      const clickedCell = selections.find(
+        (sel) =>
+          coords.x >= sel.x &&
+          coords.x < sel.x + sel.width &&
+          coords.y >= sel.y &&
+          coords.y < sel.y + sel.height
+      );
+
+      if (clickedCell) {
+        slicerStore.dispatch({ type: 'UNASSIGN_CELL', id: clickedCell.id });
+      }
       return;
     }
 
@@ -187,24 +208,12 @@
       const isDisabled = !sel.enabled;
 
       if (isDisabled) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        ctx.fillRect(xPx, yPx, wPx, hPx);
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        // Completely remove color fill for unassigned cells
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
         ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
         ctx.strokeRect(xPx, yPx, wPx, hPx);
-
-        ctx.beginPath();
-        ctx.moveTo(xPx, yPx);
-        ctx.lineTo(xPx + wPx, yPx + hPx);
-        ctx.moveTo(xPx + wPx, yPx);
-        ctx.lineTo(xPx, yPx + hPx);
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
-        ctx.stroke();
-
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
-        ctx.font = '10px sans-serif';
-        ctx.fillText('UNASSIGNED', xPx + 4, yPx + 14);
+        ctx.setLineDash([]);
       } else {
         ctx.fillStyle = groupColor + (isActive ? '55' : '25');
         ctx.fillRect(xPx, yPx, wPx, hPx);

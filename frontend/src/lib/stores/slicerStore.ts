@@ -159,6 +159,7 @@ function createSlicerStore() {
             }
           }
 
+          case 'UNASSIGN_CELL':
           case 'TOGGLE_CELL_ENABLE': {
             const cellId = action.id;
             const isDisabled = state.disabledCellIds.includes(cellId);
