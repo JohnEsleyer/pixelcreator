@@ -1,3 +1,7 @@
+export type Screen = 'dashboard' | 'editor' | 'overview' | 'slicer';
+
+export type Tool = 'pencil' | 'eraser' | 'eyedropper' | 'select' | 'lasso';
+
 export interface Color {
   r: number;
   g: number;
@@ -17,6 +21,17 @@ export interface PixelFrame {
   height: number;
   pixels: (Color | null)[];
   groupId: string;
+  tag?: string;
+}
+
+export interface SpriteSelection {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  groupName: string;
+  enabled: boolean;
 }
 
 export interface Project {
@@ -32,8 +47,3 @@ export interface Project {
   onionSkinEnabled: boolean;
   zoom: number;
 }
-
-export type Tool = 'pencil' | 'eraser';
-export type Screen = 'dashboard' | 'editor' | 'overview' | 'slicer';
-export type Direction = 'left' | 'right' | 'up' | 'down';
-export type SlicerMode = 'manual' | 'grid';

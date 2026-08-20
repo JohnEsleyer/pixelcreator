@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import type { Project, Color, Tool, PixelFrame, Group } from '../types';
   import PixelCanvas from './PixelCanvas.svelte';
   import PreviewCanvas from './PreviewCanvas.svelte';
@@ -19,7 +19,11 @@
   let previewFrameIdx = 0;
   let timer: any = null;
 
-  const colorPalette: Color[] = [
+  let undoStack: (Color | null)[][] = [];
+  let redoStack: (Color | null)[][] = [];
+  const MAX_HISTORY = 30;
+
+  let colorPalette: Color[] = [
     { r: 0, g: 0, b: 0, a: 1 },
     { r: 1, g: 1, b: 1, a: 1 },
     { r: 0.9, g: 0.2, b: 0.2, a: 1 },
@@ -51,10 +55,58 @@
     }
   }
 
+  function saveUndoState() {
+    if (!currentFrame) return;
+    undoStack = [...undoStack.slice(-MAX_HISTORY), [...currentFrame.pixels]];
+    redoStack = [];
+  }
+
+  function undo() {
+    if (undoStack.length === 0 || !currentFrame) return;
+    const previousState = undoStack[undoStack.length - 1];
+    undoStack = undoStack.slice(0, -1);
+    redoStack = [...redoStack, [...currentFrame.pixels]];
+    currentFrame.pixels = [...previousState];
+    project = project;
+  }
+
+  function redo() {
+    if (redoStack.length === 0 || !currentFrame) return;
+    const nextState = redoStack[redoStack.length - 1];
+    redoStack = redoStack.slice(0, -1);
+    undoStack = [...undoStack, [...currentFrame.pixels]];
+    currentFrame.pixels = [...nextState];
+    project = project;
+  }
+
   function handleDraw(x: number, y: number) {
     if (!currentFrame) return;
     const idx = y * project.width + x;
     currentFrame.pixels[idx] = tool === 'pencil' ? { ...currentColor } : null;
+    project = project;
+  }
+
+  function handleSampleColor(color: Color) {
+    red = color.r;
+    green = color.g;
+    blue = color.b;
+    syncHex();
+    tool = 'pencil';
+  }
+
+  function addCurrentColorToPalette() {
+    const exists = colorPalette.some(
+      (c) => Math.abs(c.r - red) < 0.01 && Math.abs(c.g - green) < 0.01 && Math.abs(c.b - blue) < 0.01
+    );
+    if (!exists) {
+      colorPalette = [...colorPalette, { r: red, g: green, b: blue, a: 1.0 }];
+    }
+  }
+
+  function handleCommitPixels(newPixels: (Color | null)[]) {
+    if (!currentFrame) return;
+    saveUndoState();
+    currentFrame.pixels = newPixels;
     project = project;
   }
 
@@ -81,6 +133,7 @@
 
   function addFrameToActiveGroup() {
     if (!activeGroup) return;
+    saveUndoState();
     project.frames.push({
       id: `frame-${Date.now()}`,
       width: project.width,
@@ -93,6 +146,7 @@
   }
 
   function duplicateFrameInGroup(frame: PixelFrame) {
+    saveUndoState();
     const dup: PixelFrame = {
       id: `frame-${Date.now()}`,
       width: frame.width,
@@ -108,6 +162,7 @@
 
   function deleteCurrentFrame() {
     if (!currentFrame || activeGroupFrames.length <= 1) return;
+    saveUndoState();
     project.frames = project.frames.filter((f) => f.id !== currentFrame.id);
     project.currentFrameIndexInGroup = Math.max(0, project.currentFrameIndexInGroup - 1);
     project = project;
@@ -126,8 +181,30 @@
     }
   }
 
+  function handleKeyDown(e: KeyboardEvent) {
+    if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+      if (e.shiftKey) {
+        e.preventDefault();
+        redo();
+      } else {
+        e.preventDefault();
+        undo();
+      }
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+      e.preventDefault();
+      redo();
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleKeyDown);
+  });
+
   onDestroy(() => {
     if (timer) clearInterval(timer);
+    window.removeEventListener('keydown', handleKeyDown);
   });
 </script>
 
@@ -141,6 +218,16 @@
       </h2>
     </div>
 
+    <!-- Center Undo / Redo -->
+    <div class="header-center">
+      <button class="btn" disabled={undoStack.length === 0} on:click={undo} title="Undo (Ctrl+Z)">
+        ↩ Undo
+      </button>
+      <button class="btn" disabled={redoStack.length === 0} on:click={redo} title="Redo (Ctrl+Y)">
+        ↪ Redo
+      </button>
+    </div>
+
     <div class="header-right">
       <button class="btn" on:click={onOpenOverview}>⣿ Overview</button>
       <button class="btn" on:click={onOpenSlicer}>✂ Slicer</button>
@@ -151,7 +238,6 @@
 
   <!-- Fluid Main Editor Grid -->
   <div class="editor-grid">
-    <!-- Left Sidebar Container Context -->
     <aside class="panel-sidebar scrollable-y">
       <div class="section-box">
         <div class="flex-between">
@@ -184,9 +270,12 @@
 
       <div class="section-box">
         <h3>Tools</h3>
-        <div class="btn-group">
-          <button class="btn" class:active={tool === 'pencil'} on:click={() => (tool = 'pencil')}>✏ Pencil</button>
-          <button class="btn" class:active={tool === 'eraser'} on:click={() => (tool = 'eraser')}>🧹 Eraser</button>
+        <div class="tools-grid">
+          <button class="btn" class:active={tool === 'pencil'} on:click={() => (tool = 'pencil')} title="Pencil">✏ Pencil</button>
+          <button class="btn" class:active={tool === 'eraser'} on:click={() => (tool = 'eraser')} title="Eraser">🧹 Eraser</button>
+          <button class="btn" class:active={tool === 'eyedropper'} on:click={() => (tool = 'eyedropper')} title="Eyedropper">🧪 Picker</button>
+          <button class="btn" class:active={tool === 'select'} on:click={() => (tool = 'select')} title="Rectangle Select & Move">🔲 Select</button>
+          <button class="btn" class:active={tool === 'lasso'} on:click={() => (tool = 'lasso')} title="Lasso Select & Move">🪢 Lasso</button>
         </div>
 
         <h3>Color Picker</h3>
@@ -201,7 +290,10 @@
         <label class="slider-row">G <input type="range" min="0" max="1" step="0.01" bind:value={green} on:input={syncHex} /></label>
         <label class="slider-row">B <input type="range" min="0" max="1" step="0.01" bind:value={blue} on:input={syncHex} /></label>
 
-        <h3>Swatches</h3>
+        <div class="flex-between margin-top-4">
+          <h3>Swatches</h3>
+          <button class="btn-xs primary" on:click={addCurrentColorToPalette}>+ Add Color</button>
+        </div>
         <div class="swatches-grid">
           {#each colorPalette as c}
             <button
@@ -214,7 +306,6 @@
       </div>
     </aside>
 
-    <!-- Center Canvas Context -->
     <main class="panel-canvas">
       <div class="canvas-topbar">
         <span class="folder-badge truncate" style="background: {activeGroup?.color};">
@@ -232,13 +323,15 @@
             zoom={project.zoom}
             {tool}
             {currentColor}
+            onDrawStart={saveUndoState}
             onDraw={handleDraw}
+            onSampleColor={handleSampleColor}
+            onCommitPixels={handleCommitPixels}
             onZoomChange={(delta) => (project.zoom = Math.max(0.25, Math.min(5, project.zoom + delta)))}
           />
         {/if}
       </div>
 
-      <!-- Auto-Expanding Timeline Strip -->
       <section class="timeline-box">
         <div class="flex-between">
           <span class="truncate">Animation Strip ({activeGroupFrames.length} Frames)</span>
@@ -261,7 +354,6 @@
       </section>
     </main>
 
-    <!-- Right Sidebar Animation Context -->
     <aside class="panel-preview scrollable-y">
       <h3>Animation Preview</h3>
       <small class="truncate">Folder: {activeGroup?.name}</small>
@@ -312,7 +404,6 @@
     background: var(--bg-app);
   }
 
-  /* Priority Header */
   .app-header {
     display: flex;
     align-items: center;
@@ -323,7 +414,7 @@
     gap: 12px;
   }
 
-  .header-left, .header-right {
+  .header-left, .header-right, .header-center {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -335,17 +426,15 @@
     font-weight: 600;
   }
 
-  /* Main Fluid Layout Grid */
   .editor-grid {
     display: grid;
-    grid-template-columns: clamp(200px, 20vw, 260px) 1fr clamp(180px, 18vw, 240px);
+    grid-template-columns: clamp(210px, 20vw, 270px) 1fr clamp(180px, 18vw, 240px);
     flex: 1;
     min-height: 0;
     gap: 12px;
     padding: 12px;
   }
 
-  /* Container Boundaries */
   .panel-sidebar, .panel-canvas, .panel-preview {
     container-type: inline-size;
     background: var(--bg-panel);
@@ -380,7 +469,12 @@
     min-height: 0;
   }
 
-  /* Auto-Expanding Timeline Strip */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+  }
+
   .timeline-box {
     background: var(--bg-app);
     border: 1px solid var(--border-color);
@@ -416,7 +510,6 @@
     border-color: var(--border-focus);
   }
 
-  /* Folders List */
   .folders-list {
     display: flex;
     flex-direction: column;
@@ -468,16 +561,16 @@
     font-weight: 600;
   }
 
-  /* Utility Controls */
   .flex-between { display: flex; justify-content: space-between; align-items: center; }
-  .btn-group { display: flex; gap: 4px; }
   .btn { padding: 6px 10px; background: var(--bg-card); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
-  .btn:hover { background: #3f3f46; }
+  .btn:hover:not(:disabled) { background: #3f3f46; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn.active { background: var(--border-focus); }
   .btn.primary { background: var(--border-focus); }
   .btn.danger { background: #dc2626; }
   .btn-sm { padding: 4px 8px; font-size: 0.75rem; background: var(--bg-card); color: white; border: none; border-radius: 4px; cursor: pointer; }
   .btn-xs { padding: 2px 4px; font-size: 0.7rem; background: var(--bg-card); color: white; border: none; border-radius: 2px; }
+  .btn-xs.primary { background: var(--border-focus); }
   .full-width { width: 100%; }
 
   .color-preview { height: 26px; border-radius: 4px; border: 1px solid #555; }
@@ -487,8 +580,8 @@
   .swatches-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20px, 1fr)); gap: 4px; }
   .swatch-btn { width: 100%; aspect-ratio: 1; border-radius: 4px; border: 1px solid #444; cursor: pointer; }
   hr { border: 0; border-top: 1px solid var(--border-color); margin: 4px 0; }
+  .margin-top-4 { margin-top: 4px; }
 
-  /* Responsive Container Queries */
   @container (max-width: 210px) {
     .btn { font-size: 0.75rem; padding: 4px 6px; }
     .project-title { font-size: 0.95rem; }
