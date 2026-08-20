@@ -34,7 +34,11 @@
   }
 
   $: if (canvas && frame) {
-    drawCanvas();
+    // Depend on zoom, previousFrame, and onionSkinEnabled to trigger immediate redraw
+    zoom;
+    previousFrame;
+    onionSkinEnabled;
+    requestAnimationFrame(() => drawCanvas());
   }
 
   function clearSelection() {

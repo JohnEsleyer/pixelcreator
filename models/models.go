@@ -85,39 +85,16 @@ func NewProject(id int, name string, w, h int) Project {
 	}
 }
 
-// --- World Composer Scene & Entity Models ---
+// --- Lightweight Sprite Data Interchange Format ---
 
-type WorldEntity struct {
-	ID            string  `json:"id"`
-	ProjectID     int     `json:"projectId"`
-	Name          string  `json:"name"`
-	X             float64 `json:"x"`
-	Y             float64 `json:"y"`
-	ZIndex        int     `json:"zIndex"`
-	ActiveGroupID string  `json:"activeGroupId"`
-	Scale         float64 `json:"scale"`
-	FlipX         bool    `json:"flipX"`
-	FlipY         bool    `json:"flipY"`
-	Opacity       float64 `json:"opacity"`
-	Playing       bool    `json:"playing"`
+type SpriteDataFile struct {
+	Format  string       `json:"format"` // "pixelcreator.sprite"
+	Version string       `json:"version"`
+	Name    string       `json:"name"`
+	Width   int          `json:"width"`
+	Height  int          `json:"height"`
+	FPS     int          `json:"fps"`
+	Groups  []Group      `json:"groups"`
+	Frames  []PixelFrame `json:"frames"`
 }
 
-type WorldScene struct {
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Width    int           `json:"width"`
-	Height   int           `json:"height"`
-	BgColor  string        `json:"bgColor"`
-	Entities []WorldEntity `json:"entities"`
-}
-
-func NewWorldScene(id, name string, w, h int) WorldScene {
-	return WorldScene{
-		ID:       id,
-		Name:     name,
-		Width:    w,
-		Height:   h,
-		BgColor:  "#18181b",
-		Entities: make([]WorldEntity, 0),
-	}
-}

@@ -3,11 +3,15 @@
 import {models} from '../models';
 import {main} from '../models';
 
-export function CreateProject(arg1:string,arg2:number):Promise<models.Project>;
+export function CreateProject(arg1:string,arg2:number,arg3:number):Promise<models.Project>;
 
 export function DeleteProject(arg1:number):Promise<boolean>;
 
 export function ExportFrameAsPNG(arg1:models.PixelFrame,arg2:number):Promise<string>;
+
+export function ExportSpriteDataJSON(arg1:models.Project):Promise<string>;
+
+export function ExportSpriteDataRON(arg1:models.Project):Promise<string>;
 
 export function GenerateSampleSpriteSheet():Promise<models.PixelFrame>;
 
@@ -16,6 +20,8 @@ export function GetProjects():Promise<Array<models.Project>>;
 export function ImportImageAsProject():Promise<models.Project>;
 
 export function ImportImageToFrame(arg1:number):Promise<models.PixelFrame>;
+
+export function ImportSpriteData(arg1:string):Promise<models.Project>;
 
 export function LoadSpriteSheet():Promise<models.PixelFrame>;
 

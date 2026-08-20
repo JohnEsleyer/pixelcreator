@@ -8,6 +8,7 @@
   export let onGoDashboard: () => void;
   export let onOpenOverview: () => void;
   export let onOpenSlicer: () => void;
+  export let onOpenTextToPixel: () => void;
   export let onImportFrame: () => void;
   export let onExportPNG: (frame: PixelFrame) => void;
 
@@ -182,7 +183,7 @@
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+    if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
 
     if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
       if (e.shiftKey) {
@@ -231,7 +232,8 @@
     <div class="header-right">
       <button class="btn" on:click={onOpenOverview}>⣿ Overview</button>
       <button class="btn" on:click={onOpenSlicer}>✂ Slicer</button>
-      <button class="btn" on:click={() => currentFrame && onExportPNG(currentFrame)}>💾 Export</button>
+      <button class="btn highlight" on:click={onOpenTextToPixel}>✨ Text to Pixel</button>
+      <button class="btn" on:click={() => currentFrame && onExportPNG(currentFrame)}>💾 PNG</button>
       <button class="btn primary" on:click={onImportFrame}>📁 Import Frame</button>
     </div>
   </header>
@@ -401,7 +403,7 @@
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    background: var(--bg-app);
+    background: var(--bg-app, #09090b);
   }
 
   .app-header {
@@ -409,8 +411,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-panel, #18181b);
+    border-bottom: 1px solid var(--border-color, #27272a);
     gap: 12px;
   }
 
@@ -426,6 +428,11 @@
     font-weight: 600;
   }
 
+  .highlight {
+    background: #0284c7 !important;
+    font-weight: 600;
+  }
+
   .editor-grid {
     display: grid;
     grid-template-columns: clamp(210px, 20vw, 270px) 1fr clamp(180px, 18vw, 240px);
@@ -436,9 +443,8 @@
   }
 
   .panel-sidebar, .panel-canvas, .panel-preview {
-    container-type: inline-size;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-color);
+    background: var(--bg-panel, #18181b);
+    border: 1px solid var(--border-color, #27272a);
     border-radius: 8px;
     padding: 12px;
     display: flex;
@@ -476,8 +482,8 @@
   }
 
   .timeline-box {
-    background: var(--bg-app);
-    border: 1px solid var(--border-color);
+    background: var(--bg-app, #09090b);
+    border: 1px solid var(--border-color, #27272a);
     border-radius: 6px;
     padding: 8px;
     display: flex;
@@ -495,8 +501,8 @@
 
   .frame-card {
     flex: 0 0 auto;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-color);
+    background: var(--bg-panel, #18181b);
+    border: 1px solid var(--border-color, #27272a);
     border-radius: 4px;
     padding: 4px;
     display: flex;
@@ -507,7 +513,7 @@
   }
 
   .frame-card.active {
-    border-color: var(--border-focus);
+    border-color: #0284c7;
   }
 
   .folders-list {
@@ -518,8 +524,8 @@
   }
 
   .folder-card {
-    background: var(--bg-app);
-    border: 1px solid var(--border-color);
+    background: var(--bg-app, #09090b);
+    border: 1px solid var(--border-color, #27272a);
     border-radius: 6px;
     padding: 6px;
     display: flex;
@@ -529,7 +535,7 @@
   }
 
   .folder-card.active {
-    border-color: var(--border-focus);
+    border-color: #0284c7;
   }
 
   .folder-title {
@@ -562,28 +568,23 @@
   }
 
   .flex-between { display: flex; justify-content: space-between; align-items: center; }
-  .btn { padding: 6px 10px; background: var(--bg-card); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+  .btn { padding: 6px 10px; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
   .btn:hover:not(:disabled) { background: #3f3f46; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn.active { background: var(--border-focus); }
-  .btn.primary { background: var(--border-focus); }
+  .btn.active { background: #0284c7; }
+  .btn.primary { background: #0284c7; }
   .btn.danger { background: #dc2626; }
-  .btn-sm { padding: 4px 8px; font-size: 0.75rem; background: var(--bg-card); color: white; border: none; border-radius: 4px; cursor: pointer; }
-  .btn-xs { padding: 2px 4px; font-size: 0.7rem; background: var(--bg-card); color: white; border: none; border-radius: 2px; }
-  .btn-xs.primary { background: var(--border-focus); }
+  .btn-sm { padding: 4px 8px; font-size: 0.75rem; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  .btn-xs { padding: 2px 4px; font-size: 0.7rem; background: #27272a; color: white; border: none; border-radius: 2px; }
+  .btn-xs.primary { background: #0284c7; }
   .full-width { width: 100%; }
 
   .color-preview { height: 26px; border-radius: 4px; border: 1px solid #555; }
   .hex-row { display: flex; align-items: center; gap: 6px; }
   .slider-row { display: flex; flex-direction: column; font-size: 0.8rem; gap: 2px; }
-  input[type="text"], input[type="number"] { width: 100%; padding: 4px; background: var(--bg-app); border: 1px solid var(--border-color); color: white; border-radius: 4px; }
+  input[type="text"], input[type="number"] { width: 100%; padding: 4px; background: #09090b; border: 1px solid #27272a; color: white; border-radius: 4px; }
   .swatches-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20px, 1fr)); gap: 4px; }
   .swatch-btn { width: 100%; aspect-ratio: 1; border-radius: 4px; border: 1px solid #444; cursor: pointer; }
-  hr { border: 0; border-top: 1px solid var(--border-color); margin: 4px 0; }
+  hr { border: 0; border-top: 1px solid #27272a; margin: 4px 0; }
   .margin-top-4 { margin-top: 4px; }
-
-  @container (max-width: 210px) {
-    .btn { font-size: 0.75rem; padding: 4px 6px; }
-    .project-title { font-size: 0.95rem; }
-  }
 </style>

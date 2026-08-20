@@ -9,3 +9,7 @@ frontend/dist/
 # OS / Editor files
 .DS_Store
 *.log
+
+# Textify tooling artifacts
+codebase.txt
+textify.yaml

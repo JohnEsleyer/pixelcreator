@@ -77,6 +77,7 @@ export namespace models {
 	    height: number;
 	    pixels: Color[];
 	    groupId: string;
+	    tag?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PixelFrame(source);
@@ -89,6 +90,7 @@ export namespace models {
 	        this.height = source["height"];
 	        this.pixels = this.convertValues(source["pixels"], Color);
 	        this.groupId = source["groupId"];
+	        this.tag = source["tag"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

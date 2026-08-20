@@ -55,7 +55,7 @@
 
   function openFrameInEditor(frame: PixelFrame) {
     const groupFrames = project.frames.filter((f) => f.groupId === frame.groupId);
-    project.activeGroupId = frame.groupId;
+    if (frame.groupId) project.activeGroupId = frame.groupId;
     project.currentFrameIndexInGroup = groupFrames.findIndex((f) => f.id === frame.id);
     onBackToEditor();
   }

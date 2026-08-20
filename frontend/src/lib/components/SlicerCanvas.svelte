@@ -16,8 +16,13 @@
   $: selections = $currentSelections;
   $: sourceFrame = model.sourceFrame;
 
-  $: if (canvas && sourceFrame && selections) {
-    draw();
+  $: if (canvas && sourceFrame) {
+    // React to model changes and selections
+    model.zoom;
+    model.panX;
+    model.panY;
+    selections;
+    requestAnimationFrame(() => draw());
   }
 
   function screenToImageCoords(e: MouseEvent): { x: number; y: number } | null {
@@ -26,17 +31,11 @@
     const clientX = e.clientX - rect.left;
     const clientY = e.clientY - rect.top;
 
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const canvasX = clientX * scaleX;
-    const canvasY = clientY * scaleY;
-
-    const baseCellSize = Math.min(canvas.width / sourceFrame.width, canvas.height / sourceFrame.height);
+    const baseCellSize = Math.min(rect.width / sourceFrame.width, rect.height / sourceFrame.height);
     const effectiveScale = baseCellSize * model.zoom;
 
-    const imgX = Math.floor((canvasX - model.panX) / effectiveScale);
-    const imgY = Math.floor((canvasY - model.panY) / effectiveScale);
+    const imgX = Math.floor((clientX - model.panX) / effectiveScale);
+    const imgY = Math.floor((clientY - model.panY) / effectiveScale);
 
     if (imgX >= 0 && imgX < sourceFrame.width && imgY >= 0 && imgY < sourceFrame.height) {
       return { x: imgX, y: imgY };
@@ -171,6 +170,11 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+    }
+
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -185,6 +189,7 @@
     ctx.fillStyle = '#1e1e24';
     ctx.fillRect(0, 0, W * scale, H * scale);
 
+    // Render source sprite sheet pixels
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const px = sourceFrame.pixels[y * W + x];
@@ -195,6 +200,7 @@
       }
     }
 
+    // Render selection boxes
     selections.forEach((sel, idx) => {
       const group = model.groups.find((g) => g.name === sel.groupName);
       const groupColor = group ? group.color : '#e63946';
@@ -205,17 +211,17 @@
       const hPx = sel.height * scale;
 
       const isActive = sel.id === model.manualActiveId;
-      const isDisabled = !sel.enabled;
+      const isAssigned = sel.enabled && sel.groupName !== '';
 
-      if (isDisabled) {
-        // Completely remove color fill for unassigned cells
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      if (!isAssigned) {
+        // Clean dashed indicator for unassigned cell
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.strokeRect(xPx, yPx, wPx, hPx);
         ctx.setLineDash([]);
       } else {
-        ctx.fillStyle = groupColor + (isActive ? '55' : '25');
+        ctx.fillStyle = groupColor + (isActive ? '55' : '30');
         ctx.fillRect(xPx, yPx, wPx, hPx);
 
         ctx.strokeStyle = '#000000';
@@ -278,8 +284,6 @@
   {#if sourceFrame}
     <canvas
       bind:this={canvas}
-      width={600}
-      height={600}
       on:mousedown={handleMouseDown}
       on:mousemove={handleMouseMove}
       on:wheel={handleWheel}
@@ -306,7 +310,6 @@
   canvas {
     width: 100%;
     height: 100%;
-    object-fit: contain;
     cursor: crosshair;
     image-rendering: pixelated;
   }

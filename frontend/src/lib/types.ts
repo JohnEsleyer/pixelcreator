@@ -1,7 +1,3 @@
-export type Screen = 'dashboard' | 'editor' | 'overview' | 'slicer' | 'composer';
-
-export type Tool = 'pencil' | 'eraser' | 'eyedropper' | 'select' | 'lasso';
-
 export interface Color {
   r: number;
   g: number;
@@ -9,19 +5,21 @@ export interface Color {
   a: number;
 }
 
-export interface Group {
-  id: string;
-  name: string;
-  color: string;
-}
+export type Tool = 'pencil' | 'eraser' | 'eyedropper' | 'select' | 'lasso';
 
 export interface PixelFrame {
   id: string;
   width: number;
   height: number;
   pixels: (Color | null)[];
-  groupId: string;
+  groupId?: string;
   tag?: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export interface SpriteSelection {
@@ -48,28 +46,4 @@ export interface Project {
   zoom: number;
 }
 
-// --- World Composer Types ---
-
-export interface WorldEntity {
-  id: string;
-  projectId: number;
-  name: string;
-  x: number;
-  y: number;
-  zIndex: number;
-  activeGroupId: string;
-  scale: number;
-  flipX: boolean;
-  flipY: boolean;
-  opacity: number;
-  playing: boolean;
-}
-
-export interface WorldScene {
-  id: string;
-  name: string;
-  width: number;
-  height: number;
-  bgColor: string;
-  entities: WorldEntity[];
-}
+export type Screen = 'dashboard' | 'editor' | 'overview' | 'slicer' | 'text-to-pixel';

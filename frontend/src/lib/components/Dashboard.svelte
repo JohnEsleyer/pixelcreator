@@ -6,14 +6,18 @@
   export let onOpenProject: (id: number) => void;
   export let onDeleteProject: (id: number) => void;
   export let onImportImage: () => void;
-  export let onOpenWorldComposer: () => void;
+  export let onImportSpriteData: (raw: string) => Promise<void>;
+  export let onOpenTextToPixel: () => void;
 
-  let newName = 'New Asset';
-  let selectedCategory: 'character' | 'world' | 'custom' = 'character';
-  let customWidth = 320;
-  let customHeight = 180;
+  let newName = 'New Sprite';
+  let isCustom = false;
+  let customWidth = 32;
+  let customHeight = 32;
   let chosenW = 16;
   let chosenH = 16;
+
+  let isPasteModalOpen = false;
+  let pasteRawText = '';
 
   const characterSizes = [
     { label: '8x8', w: 8, h: 8 },
@@ -21,28 +25,29 @@
     { label: '24x24', w: 24, h: 24 },
     { label: '32x32', w: 32, h: 32 },
     { label: '48x48', w: 48, h: 48 },
-    { label: '64x64', w: 64, h: 64 }
-  ];
-
-  const worldSizes = [
-    { label: '128x128 Tilemap/Prop', w: 128, h: 128 },
-    { label: '256x256 Large Asset', w: 256, h: 256 },
-    { label: '320x180 (16:9 Retro BG)', w: 320, h: 180 },
-    { label: '512x512 Environment', w: 512, h: 512 },
-    { label: '640x360 Full HD Pixel BG', w: 640, h: 360 }
+    { label: '64x64', w: 64, h: 64 },
+    { label: '128x128', w: 128, h: 128 }
   ];
 
   function setSize(w: number, h: number) {
     chosenW = w;
     chosenH = h;
+    isCustom = false;
   }
 
   function handleCreate() {
-    if (selectedCategory === 'custom') {
+    if (isCustom) {
       onCreateProject(newName, customWidth, customHeight);
     } else {
       onCreateProject(newName, chosenW, chosenH);
     }
+  }
+
+  async function handleConfirmPaste() {
+    if (!pasteRawText.trim()) return;
+    await onImportSpriteData(pasteRawText);
+    isPasteModalOpen = false;
+    pasteRawText = '';
   }
 </script>
 
@@ -50,53 +55,41 @@
   <header class="dashboard-header">
     <div class="header-brand">
       <h1>PixelCreator Studio</h1>
-      <span class="version-tag">v2.0 • Slicer & World Composer</span>
+      <span class="version-tag">Sprite Engine Edition</span>
     </div>
 
     <div class="header-nav">
-      <button class="btn composer-btn" on:click={onOpenWorldComposer}>
-        🌍 Open World Composer
+      <button class="btn highlight" on:click={onOpenTextToPixel}>
+        ✨ Text to Pixel
+      </button>
+      <button class="btn" on:click={() => (isPasteModalOpen = true)}>
+        📥 Paste / Load Sprite Data
       </button>
     </div>
   </header>
 
   <main class="dashboard-grid">
     <section class="card create-card scrollable-y">
-      <h2>Create Asset</h2>
+      <h2>Create Sprite</h2>
       <label class="field-label">
-        Project Name
-        <input type="text" bind:value={newName} placeholder="Hero / Grassland BG" />
+        Sprite Name
+        <input type="text" bind:value={newName} placeholder="Hero Character" />
       </label>
 
       <div class="category-tabs">
-        <button class="tab-btn" class:active={selectedCategory === 'character'} on:click={() => { selectedCategory = 'character'; setSize(16, 16); }}>
-          Sprites & Characters
+        <button class="tab-btn" class:active={!isCustom} on:click={() => (isCustom = false)}>
+          Presets
         </button>
-        <button class="tab-btn" class:active={selectedCategory === 'world'} on:click={() => { selectedCategory = 'world'; setSize(320, 180); }}>
-          World & Backgrounds
-        </button>
-        <button class="tab-btn" class:active={selectedCategory === 'custom'} on:click={() => (selectedCategory = 'custom')}>
-          Custom
+        <button class="tab-btn" class:active={isCustom} on:click={() => (isCustom = true)}>
+          Custom Size
         </button>
       </div>
 
-      {#if selectedCategory === 'character'}
+      {#if !isCustom}
         <div class="preset-grid">
           {#each characterSizes as sz}
             <button
               class="preset-btn"
-              class:active={chosenW === sz.w && chosenH === sz.h}
-              on:click={() => setSize(sz.w, sz.h)}
-            >
-              {sz.label}
-            </button>
-          {/each}
-        </div>
-      {:else if selectedCategory === 'world'}
-        <div class="preset-grid-vertical">
-          {#each worldSizes as sz}
-            <button
-              class="preset-btn text-left"
               class:active={chosenW === sz.w && chosenH === sz.h}
               on:click={() => setSize(sz.w, sz.h)}
             >
@@ -118,7 +111,7 @@
       {/if}
 
       <div class="size-indicator">
-        Selected Canvas: <strong>{selectedCategory === 'custom' ? customWidth : chosenW} x {selectedCategory === 'custom' ? customHeight : chosenH} px</strong>
+        Selected Canvas: <strong>{isCustom ? customWidth : chosenW} x {isCustom ? customHeight : chosenH} px</strong>
       </div>
 
       <button class="btn primary launch-btn" on:click={handleCreate}>
@@ -126,15 +119,19 @@
       </button>
 
       <hr />
-      <button class="btn secondary" on:click={onImportImage}>
-        📁 Import Image as New Project
-      </button>
+      <div class="row gap-6">
+        <button class="btn secondary flex-1" on:click={onImportImage}>
+          📁 Import Image
+        </button>
+        <button class="btn secondary flex-1" on:click={() => (isPasteModalOpen = true)}>
+          📥 Load Data Format
+        </button>
+      </div>
     </section>
 
     <section class="card projects-card">
       <div class="flex-between">
-        <h2>Existing Projects ({projects.length})</h2>
-        <button class="btn-sm" on:click={onOpenWorldComposer}>🌍 World View</button>
+        <h2>Existing Sprites ({projects.length})</h2>
       </div>
       
       <div class="projects-grid scrollable-y">
@@ -142,7 +139,7 @@
           <article class="project-item">
             <div class="project-info min-w-0">
               <h3 class="truncate">{proj.name}</h3>
-              <small>Dimensions: {proj.width}x{proj.height} px • {proj.frames.length} Frame(s)</small>
+              <small>{proj.width}x{proj.height} px • {proj.frames.length} Frame(s)</small>
             </div>
             <div class="project-actions">
               <button class="btn primary" on:click={() => onOpenProject(proj.id)}>Open</button>
@@ -153,6 +150,26 @@
       </div>
     </section>
   </main>
+
+  <!-- Load / Paste Data Format Modal -->
+  {#if isPasteModalOpen}
+    <div class="modal-backdrop" on:click={() => (isPasteModalOpen = false)}>
+      <div class="modal-card" on:click|stopPropagation>
+        <div class="modal-header">
+          <h3>📥 Load Sprite Data Format (JSON / RON)</h3>
+          <button class="btn-sm" on:click={() => (isPasteModalOpen = false)}>✕ Close</button>
+        </div>
+
+        <p class="modal-sub">Paste custom sprite specification or engine data text below:</p>
+        <textarea class="paste-textarea" bind:value={pasteRawText} placeholder="Paste sprite JSON data here..."></textarea>
+
+        <div class="modal-footer">
+          <button class="btn" on:click={() => (isPasteModalOpen = false)}>Cancel</button>
+          <button class="btn primary" on:click={handleConfirmPaste}>🚀 Parse & Load Sprite</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -324,13 +341,72 @@
     gap: 6px;
   }
 
+  /* Modal */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal-card {
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    padding: 20px;
+    width: 580px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-sub {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin: 0;
+  }
+
+  .paste-textarea {
+    width: 100%;
+    height: 240px;
+    background: #09090b;
+    border: 1px solid #27272a;
+    color: #38bdf8;
+    font-family: monospace;
+    font-size: 0.8rem;
+    padding: 10px;
+    border-radius: 4px;
+    resize: none;
+    box-sizing: border-box;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .flex-between { display: flex; justify-content: space-between; align-items: center; }
   .btn { padding: 8px 12px; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; }
   .btn:hover { background: #3f3f46; }
   .btn.active, .btn.primary { background: #0284c7; }
   .btn.danger { background: #dc2626; }
+  .btn.highlight { background: #0284c7; font-weight: 600; }
   .btn-sm { padding: 4px 8px; font-size: 0.8rem; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  .row { display: flex; align-items: center; }
+  .gap-6 { gap: 6px; }
+  .flex-1 { flex: 1; }
   input[type="text"], input[type="number"] { padding: 8px; background: #09090b; border: 1px solid #27272a; color: white; border-radius: 4px; }
   hr { border: 0; border-top: 1px solid #27272a; margin: 4px 0; }
   .min-w-0 { min-width: 0; }
+  .secondary { background: #1e3a5f !important; }
 </style>

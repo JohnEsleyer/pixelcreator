@@ -6,9 +6,11 @@ export function extractSubFrame(
   removeWhiteBg: boolean
 ): PixelFrame {
   const result: PixelFrame = {
+    id: `frame-slice-${Date.now()}-${sel.id}`,
     width: sel.width,
     height: sel.height,
     pixels: new Array(sel.width * sel.height).fill(null),
+    groupId: '',
     tag: sel.groupName
   };
 

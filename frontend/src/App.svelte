@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Project, Screen, PixelFrame, Group, WorldScene } from './lib/types';
+  import type { Project, Screen, PixelFrame, Group } from './lib/types';
   import Dashboard from './lib/components/Dashboard.svelte';
   import Editor from './lib/components/Editor.svelte';
   import FramesOverview from './lib/components/FramesOverview.svelte';
   import Slicer from './lib/components/Slicer.svelte';
-  import WorldComposer from './lib/components/WorldComposer.svelte';
+  import TextToPixel from './lib/components/TextToPixel.svelte';
   import { slicerStore } from './lib/stores/slicerStore';
 
   import {
@@ -16,31 +16,18 @@
     ImportImageAsProject,
     ImportImageToFrame,
     ExportFrameAsPNG,
+    ImportSpriteData,
     LoadSpriteSheet,
     GenerateSampleSpriteSheet,
-    PackFramesToSheet,
-    GetWorldScene,
-    SaveWorldScene,
-    GenerateWorldJSON,
-    GenerateWorldRON,
-    ExportWorldToFile
+    PackFramesToSheet
   } from '../wailsjs/go/main/App';
 
   let currentScreen: Screen = 'dashboard';
   let projects: Project[] = [];
   let activeProject: Project | null = null;
-  let worldScene: WorldScene = {
-    id: 'world-default',
-    name: 'Prototype World',
-    width: 960,
-    height: 540,
-    bgColor: '#18181b',
-    entities: []
-  };
 
   async function loadInitialData() {
     projects = await GetProjects();
-    worldScene = await GetWorldScene();
   }
 
   async function handleCreateProject(name: string, width: number, height: number) {
@@ -75,6 +62,19 @@
     }
   }
 
+  async function handleImportSpriteData(raw: string) {
+    try {
+      const proj = await ImportSpriteData(raw);
+      if (proj) {
+        await loadInitialData();
+        activeProject = proj;
+        currentScreen = 'editor';
+      }
+    } catch (e) {
+      alert(`Could not parse sprite data: ${e}`);
+    }
+  }
+
   async function handleImportFrame() {
     if (!activeProject) return;
     try {
@@ -98,6 +98,45 @@
     } catch (e) {
       console.warn(e);
     }
+  }
+
+  // --- Text to Pixel Handlers ---
+  function handleCreateProjectFromFrame(frame: PixelFrame, name: string) {
+    const palette = ['#e63946', '#2a9d8f', '#457b9d'];
+    const group: Group = { id: `group-${Date.now()}`, name: 'Default', color: palette[0] };
+    const newProj: Project = {
+      id: Date.now(),
+      name,
+      width: frame.width,
+      height: frame.height,
+      groups: [group],
+      frames: [{ ...frame, id: `frame-${Date.now()}`, groupId: group.id }],
+      activeGroupId: group.id,
+      currentFrameIndexInGroup: 0,
+      fps: 8,
+      onionSkinEnabled: true,
+      zoom: 1.0
+    };
+    activeProject = newProj;
+    projects = [...projects, newProj];
+    currentScreen = 'editor';
+    SaveProject(newProj).catch(console.warn);
+  }
+
+  function handleInsertFrameToProject(frame: PixelFrame) {
+    if (!activeProject) return;
+    const groupId = activeProject.activeGroupId || activeProject.groups[0]?.id;
+    const newFrame: PixelFrame = {
+      ...frame,
+      id: `frame-${Date.now()}`,
+      groupId
+    };
+    activeProject.frames.push(newFrame);
+    const groupFrames = activeProject.frames.filter((f) => f.groupId === groupId);
+    activeProject.currentFrameIndexInGroup = groupFrames.length - 1;
+    activeProject = activeProject;
+    currentScreen = 'editor';
+    SaveProject(activeProject).catch(console.warn);
   }
 
   // --- Slicer Actions ---
@@ -218,7 +257,8 @@
       }}
       onDeleteProject={handleDeleteProject}
       onImportImage={handleImportImageProject}
-      onOpenWorldComposer={() => (currentScreen = 'composer')}
+      onImportSpriteData={handleImportSpriteData}
+      onOpenTextToPixel={() => (currentScreen = 'text-to-pixel')}
     />
   {:else if currentScreen === 'editor' && activeProject}
     <Editor
@@ -229,6 +269,7 @@
       }}
       onOpenOverview={() => (currentScreen = 'overview')}
       onOpenSlicer={handleOpenEditorSlicer}
+      onOpenTextToPixel={() => (currentScreen = 'text-to-pixel')}
       onImportFrame={handleImportFrame}
       onExportPNG={handleExportPNG}
     />
@@ -249,21 +290,12 @@
       onApplySlices={handleApplySlices}
       onPackFramesToSheet={PackFramesToSheet}
     />
-  {:else if currentScreen === 'composer'}
-    <WorldComposer
-      bind:scene={worldScene}
-      {projects}
-      onBackToDashboard={() => (currentScreen = 'dashboard')}
-      onEditProject={(projId) => {
-        activeProject = projects.find((p) => p.id === projId) || null;
-        if (activeProject) {
-          currentScreen = 'editor';
-        }
-      }}
-      onSaveScene={SaveWorldScene}
-      onGenerateJSON={GenerateWorldJSON}
-      onGenerateRON={GenerateWorldRON}
-      onExportToFile={ExportWorldToFile}
+  {:else if currentScreen === 'text-to-pixel'}
+    <TextToPixel
+      {activeProject}
+      onBack={() => (currentScreen = activeProject ? 'editor' : 'dashboard')}
+      onCreateProjectFromFrame={handleCreateProjectFromFrame}
+      onInsertFrameToProject={handleInsertFrameToProject}
     />
   {/if}
 </main>
@@ -275,5 +307,27 @@
     background-color: #09090b;
     user-select: none;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+
+  :global(*) {
+    box-sizing: border-box;
+  }
+
+  :global(.scrollable-y) {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+
+  :global(.scrollable-x) {
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+
+  :global(.truncate) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

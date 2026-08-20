@@ -21,17 +21,15 @@ import (
 )
 
 type App struct {
-	ctx        context.Context
-	projects   []models.Project
-	worldScene models.WorldScene
-	nextID     int
+	ctx      context.Context
+	projects []models.Project
+	nextID   int
 }
 
 func NewApp() *App {
 	app := &App{
-		projects:   make([]models.Project, 0),
-		worldScene: models.NewWorldScene("world-default", "Prototype World", 960, 540),
-		nextID:     1,
+		projects: make([]models.Project, 0),
+		nextID:   1,
 	}
 
 	sample := models.NewProject(app.nextID, "Hero Sprite", 16, 16)
@@ -48,48 +46,7 @@ func NewApp() *App {
 		sample.Frames[0].Pixels[9*16+x] = &models.Color{R: 0.8, G: 0.2, B: 0.2, A: 1.0}
 	}
 
-	// Add sample background asset project
-	bgSample := models.NewProject(app.nextID, "World Background", 320, 180)
-	app.nextID++
-	for y := 0; y < 180; y++ {
-		for x := 0; x < 320; x++ {
-			if y > 120 {
-				bgSample.Frames[0].Pixels[y*320+x] = &models.Color{R: 0.2, G: 0.6, B: 0.3, A: 1.0}
-			} else {
-				bgSample.Frames[0].Pixels[y*320+x] = &models.Color{R: 0.15, G: 0.2, B: 0.35, A: 1.0}
-			}
-		}
-	}
-
-	app.projects = append(app.projects, sample, bgSample)
-
-	// Add initial entities to world scene
-	app.worldScene.Entities = append(app.worldScene.Entities,
-		models.WorldEntity{
-			ID:            "entity-bg-1",
-			ProjectID:     bgSample.ID,
-			Name:          bgSample.Name,
-			X:             160,
-			Y:             90,
-			ZIndex:        0,
-			ActiveGroupID: bgSample.Groups[0].ID,
-			Scale:         1.0,
-			Opacity:       1.0,
-			Playing:       true,
-		},
-		models.WorldEntity{
-			ID:            "entity-hero-1",
-			ProjectID:     sample.ID,
-			Name:          sample.Name,
-			X:             240,
-			Y:             130,
-			ZIndex:        1,
-			ActiveGroupID: sample.Groups[0].ID,
-			Scale:         3.0,
-			Opacity:       1.0,
-			Playing:       true,
-		},
-	)
+	app.projects = append(app.projects, sample)
 
 	return app
 }
@@ -137,66 +94,75 @@ func (a *App) DeleteProject(id int) bool {
 	return false
 }
 
-// --- World Scene Persistence & RON/JSON Generation ---
+// --- Custom Sprite Data Format Serialization & Deserialization ---
 
-func (a *App) GetWorldScene() models.WorldScene {
-	return a.worldScene
-}
+func (a *App) ExportSpriteDataJSON(project models.Project) (string, error) {
+	fileData := models.SpriteDataFile{
+		Format:  "pixelcreator.sprite",
+		Version: "1.0",
+		Name:    project.Name,
+		Width:   project.Width,
+		Height:  project.Height,
+		FPS:     project.FPS,
+		Groups:  project.Groups,
+		Frames:  project.Frames,
+	}
 
-func (a *App) SaveWorldScene(scene models.WorldScene) {
-	a.worldScene = scene
-}
-
-func (a *App) GenerateWorldJSON(scene models.WorldScene) (string, error) {
-	data, err := json.MarshalIndent(scene, "", "  ")
+	bytes, err := json.MarshalIndent(fileData, "", "  ")
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	return string(bytes), nil
 }
 
-func (a *App) GenerateWorldRON(scene models.WorldScene) string {
+func (a *App) ExportSpriteDataRON(project models.Project) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("WorldScene(\n"))
-	sb.WriteString(fmt.Sprintf("    id: \"%s\",\n", scene.ID))
-	sb.WriteString(fmt.Sprintf("    name: \"%s\",\n", scene.Name))
-	sb.WriteString(fmt.Sprintf("    dimensions: (%d, %d),\n", scene.Width, scene.Height))
-	sb.WriteString(fmt.Sprintf("    bg_color: \"%s\",\n", scene.BgColor))
-	sb.WriteString(fmt.Sprintf("    entities: [\n"))
-
-	for _, e := range scene.Entities {
-		sb.WriteString(fmt.Sprintf("        WorldEntity(\n"))
-		sb.WriteString(fmt.Sprintf("            id: \"%s\",\n", e.ID))
-		sb.WriteString(fmt.Sprintf("            project_id: %d,\n", e.ProjectID))
-		sb.WriteString(fmt.Sprintf("            name: \"%s\",\n", e.Name))
-		sb.WriteString(fmt.Sprintf("            position: (%.2f, %.2f),\n", e.X, e.Y))
-		sb.WriteString(fmt.Sprintf("            z_index: %d,\n", e.ZIndex))
-		sb.WriteString(fmt.Sprintf("            active_group_id: \"%s\",\n", e.ActiveGroupID))
-		sb.WriteString(fmt.Sprintf("            scale: %.2f,\n", e.Scale))
-		sb.WriteString(fmt.Sprintf("            flip_x: %t,\n", e.FlipX))
-		sb.WriteString(fmt.Sprintf("            flip_y: %t,\n", e.FlipY))
-		sb.WriteString(fmt.Sprintf("            opacity: %.2f,\n", e.Opacity))
-		sb.WriteString(fmt.Sprintf("        ),\n"))
-	}
-
-	sb.WriteString(fmt.Sprintf("    ],\n)"))
+	sb.WriteString(fmt.Sprintf("SpriteData(\n"))
+	sb.WriteString(fmt.Sprintf("    name: \"%s\",\n", project.Name))
+	sb.WriteString(fmt.Sprintf("    dimensions: (%d, %d),\n", project.Width, project.Height))
+	sb.WriteString(fmt.Sprintf("    fps: %d,\n", project.FPS))
+	sb.WriteString(fmt.Sprintf("    groups_count: %d,\n", len(project.Groups)))
+	sb.WriteString(fmt.Sprintf("    frames_count: %d,\n", len(project.Frames)))
+	sb.WriteString(fmt.Sprintf(")\n"))
 	return sb.String()
 }
 
-func (a *App) ExportWorldToFile(content string, defaultName string) (string, error) {
-	savePath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Export World Data",
-		DefaultFilename: defaultName,
-	})
-	if err != nil || savePath == "" {
-		return "", fmt.Errorf("export cancelled")
+func (a *App) ImportSpriteData(raw string) (*models.Project, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, fmt.Errorf("empty sprite data")
 	}
 
-	err = os.WriteFile(savePath, []byte(content), 0644)
+	var data models.SpriteDataFile
+	err := json.Unmarshal([]byte(trimmed), &data)
 	if err != nil {
-		return "", err
+		// Fallback: try parsing as pure Project struct
+		var rawProj models.Project
+		if err2 := json.Unmarshal([]byte(trimmed), &rawProj); err2 == nil && len(rawProj.Frames) > 0 {
+			rawProj.ID = a.nextID
+			a.nextID++
+			a.projects = append(a.projects, rawProj)
+			return &rawProj, nil
+		}
+		return nil, fmt.Errorf("invalid sprite JSON format: %v", err)
 	}
-	return savePath, nil
+
+	proj := models.NewProject(a.nextID, data.Name, data.Width, data.Height)
+	a.nextID++
+
+	if len(data.Groups) > 0 {
+		proj.Groups = data.Groups
+		proj.ActiveGroupID = data.Groups[0].ID
+	}
+	if len(data.Frames) > 0 {
+		proj.Frames = data.Frames
+	}
+	if data.FPS > 0 {
+		proj.FPS = data.FPS
+	}
+
+	a.projects = append(a.projects, proj)
+	return &proj, nil
 }
 
 func (a *App) ImportImageAsProject() (*models.Project, error) {
