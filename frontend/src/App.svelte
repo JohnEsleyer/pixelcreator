@@ -1,50 +1,72 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Project, Screen, PixelFrame } from './lib/types';
+  import type { Project, Screen, PixelFrame, Group, WorldScene } from './lib/types';
   import Dashboard from './lib/components/Dashboard.svelte';
   import Editor from './lib/components/Editor.svelte';
   import FramesOverview from './lib/components/FramesOverview.svelte';
   import Slicer from './lib/components/Slicer.svelte';
+  import WorldComposer from './lib/components/WorldComposer.svelte';
   import { slicerStore } from './lib/stores/slicerStore';
 
   import {
     GetProjects,
     CreateProject,
     DeleteProject,
+    SaveProject,
     ImportImageAsProject,
     ImportImageToFrame,
     ExportFrameAsPNG,
     LoadSpriteSheet,
     GenerateSampleSpriteSheet,
-    PackFramesToSheet
+    PackFramesToSheet,
+    GetWorldScene,
+    SaveWorldScene,
+    GenerateWorldJSON,
+    GenerateWorldRON,
+    ExportWorldToFile
   } from '../wailsjs/go/main/App';
 
   let currentScreen: Screen = 'dashboard';
   let projects: Project[] = [];
   let activeProject: Project | null = null;
+  let worldScene: WorldScene = {
+    id: 'world-default',
+    name: 'Prototype World',
+    width: 960,
+    height: 540,
+    bgColor: '#18181b',
+    entities: []
+  };
 
-  async function loadProjects() {
+  async function loadInitialData() {
     projects = await GetProjects();
+    worldScene = await GetWorldScene();
   }
 
-  async function handleCreateProject(name: string, size: number) {
-    const proj = await CreateProject(name, size);
-    await loadProjects();
+  async function handleCreateProject(name: string, width: number, height: number) {
+    const proj = await CreateProject(name, width, height);
+    await loadInitialData();
     activeProject = proj;
     currentScreen = 'editor';
   }
 
   async function handleDeleteProject(id: number) {
     await DeleteProject(id);
-    await loadProjects();
+    await loadInitialData();
     if (activeProject?.id === id) activeProject = null;
+  }
+
+  async function handleSaveActiveProject() {
+    if (activeProject) {
+      await SaveProject(activeProject);
+    }
   }
 
   async function handleImportImageProject() {
     try {
       const proj = await ImportImageAsProject();
       if (proj) {
-        await loadProjects();
+        await loadInitialData();
         activeProject = proj;
         currentScreen = 'editor';
       }
@@ -63,6 +85,7 @@
         const groupFrames = activeProject.frames.filter((f) => f.groupId === activeProject!.activeGroupId);
         activeProject.currentFrameIndexInGroup = groupFrames.length - 1;
         activeProject = activeProject;
+        await handleSaveActiveProject();
       }
     } catch (e) {
       console.warn(e);
@@ -90,16 +113,13 @@
     }
   }
 
-  // --- SLICE APPLICATION HANDLER ---
   function handleApplySlices(slices: PixelFrame[], replace: boolean) {
     if (!slices.length) return;
 
-    // 1. Collect unique groups from extracted slice frames
     const groupNames = Array.from(new Set(slices.map((s) => s.tag || 'Main')));
     const palette = ['#e63946', '#2a9d8f', '#457b9d', '#e76f51', '#9c27b0', '#00bcd4'];
 
     if (activeProject) {
-      // Create missing Group Folders in Active Project
       groupNames.forEach((name, idx) => {
         let group = activeProject!.groups.find((g) => g.name === name);
         if (!group) {
@@ -112,7 +132,6 @@
         }
       });
 
-      // Map slice tag -> Group Folder ID
       const slicedFrames: PixelFrame[] = slices.map((s, idx) => {
         const group = activeProject!.groups.find((g) => g.name === (s.tag || 'Main'));
         return {
@@ -133,6 +152,7 @@
       activeProject.activeGroupId = activeProject.groups[0].id;
       activeProject.currentFrameIndexInGroup = 0;
       activeProject = activeProject;
+      handleSaveActiveProject();
     } else {
       const groups: Group[] = groupNames.map((name, idx) => ({
         id: `group-${Date.now()}-${idx}`,
@@ -183,7 +203,7 @@
   }
 
   onMount(() => {
-    loadProjects();
+    loadInitialData();
   });
 </script>
 
@@ -198,11 +218,15 @@
       }}
       onDeleteProject={handleDeleteProject}
       onImportImage={handleImportImageProject}
+      onOpenWorldComposer={() => (currentScreen = 'composer')}
     />
   {:else if currentScreen === 'editor' && activeProject}
     <Editor
       bind:project={activeProject}
-      onGoDashboard={() => (currentScreen = 'dashboard')}
+      onGoDashboard={() => {
+        handleSaveActiveProject();
+        currentScreen = 'dashboard';
+      }}
       onOpenOverview={() => (currentScreen = 'overview')}
       onOpenSlicer={handleOpenEditorSlicer}
       onImportFrame={handleImportFrame}
@@ -211,7 +235,10 @@
   {:else if currentScreen === 'overview' && activeProject}
     <FramesOverview
       bind:project={activeProject}
-      onBackToEditor={() => (currentScreen = 'editor')}
+      onBackToEditor={() => {
+        handleSaveActiveProject();
+        currentScreen = 'editor';
+      }}
     />
   {:else if currentScreen === 'slicer'}
     <Slicer
@@ -222,6 +249,22 @@
       onApplySlices={handleApplySlices}
       onPackFramesToSheet={PackFramesToSheet}
     />
+  {:else if currentScreen === 'composer'}
+    <WorldComposer
+      bind:scene={worldScene}
+      {projects}
+      onBackToDashboard={() => (currentScreen = 'dashboard')}
+      onEditProject={(projId) => {
+        activeProject = projects.find((p) => p.id === projId) || null;
+        if (activeProject) {
+          currentScreen = 'editor';
+        }
+      }}
+      onSaveScene={SaveWorldScene}
+      onGenerateJSON={GenerateWorldJSON}
+      onGenerateRON={GenerateWorldRON}
+      onExportToFile={ExportWorldToFile}
+    />
   {/if}
 </main>
 
@@ -231,5 +274,6 @@
     padding: 0;
     background-color: #09090b;
     user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
 </style>

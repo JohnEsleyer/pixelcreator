@@ -14,12 +14,25 @@
     proj: Project
   ) => Promise<{ sheet: PixelFrame; selections: any[] }>;
 
+  let expandedGroupName: string | null = null;
+
   $: model = $slicerStore;
   $: selections = $currentSelections;
   $: slices = $extractedSlices;
 
   $: activeGroup = model.groups[model.activeGroupIdx] || model.groups[0];
   $: activeSelection = selections.find((s) => s.id === model.manualActiveId) || null;
+
+  // Group slices by their group name for group list view
+  $: groupedSlices = model.groups.map((grp) => {
+    const groupItems = slices.filter((s) => s.groupName === grp.name);
+    return {
+      group: grp,
+      items: groupItems,
+      activeCount: groupItems.filter((i) => i.enabled).length,
+      coverFrame: groupItems[0]?.frame || null
+    };
+  });
 
   function dispatch(msg: any) {
     slicerStore.dispatch(msg);
@@ -76,6 +89,7 @@
   </header>
 
   <div class="slicer-body">
+    <!-- Left Sidebar -->
     <div class="panel sidebar scrollable-y">
       {#if model.mode === 'grid'}
         <h3>Full Grid Parameters</h3>
@@ -174,13 +188,14 @@
       </button>
     </div>
 
+    <!-- Center Interactive Canvas -->
     <div class="panel canvas-container">
       <div class="canvas-header">
         <span class="truncate">
-          {model.mode === 'grid' ? 'Grid Mode: Click cells to assign group / toggle unassign' : 'Manual Mode: Drag to create boxes'}
+          {model.mode === 'grid' ? 'Left click: assign group • Right click: unassign' : 'Manual Mode: Drag to create boxes'}
         </span>
         <div class="canvas-view-controls">
-          <small>Zoom: {Math.round(model.zoom * 100)}% (Ctrl+Scroll)</small>
+          <small>Zoom: {Math.round(model.zoom * 100)}%</small>
           <button class="btn-xs" on:click={() => dispatch({ type: 'RESET_VIEW' })}>Reset View</button>
         </div>
       </div>
@@ -188,48 +203,33 @@
       <SlicerCanvas />
     </div>
 
+    <!-- Right Side Panel: Groups with Cover Slices -->
     <div class="panel previews-panel scrollable-y">
       <div class="previews-header">
-        <h3>Native Slices ({slices.filter(s => s.enabled).length}/{slices.length})</h3>
-        <small>Real-Time Previews</small>
+        <h3>Group Folders ({groupedSlices.length})</h3>
+        <small>Click a group to view all its slices in a full grid</small>
       </div>
 
-      <div class="previews-list">
-        {#each slices as slice, idx}
-          {@const group = model.groups.find(g => g.name === slice.groupName)}
-          <div
-            class="slice-card"
-            class:disabled={!slice.enabled}
-            class:active={slice.id === model.manualActiveId}
-            on:click={() => dispatch({ type: 'SET_MODAL', id: slice.id })}
-          >
-            <div class="slice-card-header">
-              <span class="slice-badge" style="background: {group ? group.color : '#555'};">
-                #{idx + 1} {slice.groupName}
-              </span>
-              <span class="slice-dims">{slice.width}x{slice.height}px</span>
-            </div>
-
-            <div class="slice-preview-wrapper">
-              <PreviewCanvas frame={slice.frame} width={64} height={64} />
-            </div>
-
-            <div class="slice-card-footer">
-              {#if slice.enabled}
-                <button
-                  class="btn-xs warning"
-                  on:click|stopPropagation={() => dispatch({ type: 'TOGGLE_CELL_ENABLE', id: slice.id })}
-                >
-                  🚫 Unassign
-                </button>
+      <div class="group-covers-list">
+        {#each groupedSlices as entry}
+          <div class="group-cover-card" on:click={() => (expandedGroupName = entry.group.name)}>
+            <div class="group-cover-thumb">
+              {#if entry.coverFrame}
+                <PreviewCanvas frame={entry.coverFrame} width={64} height={64} />
               {:else}
-                <button
-                  class="btn-xs primary"
-                  on:click|stopPropagation={() => dispatch({ type: 'TOGGLE_CELL_ENABLE', id: slice.id })}
-                >
-                  ✅ Enable
-                </button>
+                <div class="empty-cover">Empty</div>
               {/if}
+            </div>
+
+            <div class="group-cover-info">
+              <div class="group-title-row">
+                <span class="color-dot" style="background: {entry.group.color};"></span>
+                <strong class="truncate">{entry.group.name}</strong>
+              </div>
+              <span class="group-count-badge">
+                {entry.activeCount} / {entry.items.length} Slices
+              </span>
+              <button class="btn-xs expand-btn">🔍 View Grid</button>
             </div>
           </div>
         {/each}
@@ -237,6 +237,53 @@
     </div>
   </div>
 
+  <!-- Full-Screen / Modal Group Grid View -->
+  {#if expandedGroupName !== null}
+    {@const activeGroupEntry = groupedSlices.find((g) => g.group.name === expandedGroupName)}
+    {#if activeGroupEntry}
+      <div class="group-modal-backdrop" on:click={() => (expandedGroupName = null)}>
+        <div class="group-modal-window" on:click|stopPropagation>
+          <div class="group-modal-header">
+            <div class="header-info">
+              <span class="color-badge" style="background: {activeGroupEntry.group.color};"></span>
+              <h2>{activeGroupEntry.group.name} — Full Slices Grid ({activeGroupEntry.items.length} Items)</h2>
+            </div>
+            <button class="btn-sm" on:click={() => (expandedGroupName = null)}>✕ Close Grid</button>
+          </div>
+
+          <div class="group-modal-grid scrollable-y">
+            {#each activeGroupEntry.items as slice, idx}
+              <div
+                class="uniform-slice-card"
+                class:disabled={!slice.enabled}
+                on:click={() => dispatch({ type: 'SET_MODAL', id: slice.id })}
+              >
+                <div class="slice-card-top">
+                  <span>#{idx + 1}</span>
+                  <span class="dim-tag">{slice.width}x{slice.height}px</span>
+                </div>
+
+                <div class="slice-canvas-box">
+                  <PreviewCanvas frame={slice.frame} width={80} height={80} />
+                </div>
+
+                <div class="slice-card-actions">
+                  <button
+                    class="btn-xs {slice.enabled ? 'warning' : 'primary'}"
+                    on:click|stopPropagation={() => dispatch({ type: 'TOGGLE_CELL_ENABLE', id: slice.id })}
+                  >
+                    {slice.enabled ? '🚫 Unassign' : '✅ Enable'}
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/if}
+  {/if}
+
+  <!-- Single Slice Inspection Modal -->
   {#if model.modalSelectionId !== null}
     {@const modalSlice = slices.find((s) => s.id === model.modalSelectionId)}
     {@const modalSel = selections.find((s) => s.id === model.modalSelectionId)}
@@ -260,9 +307,7 @@
 
               <button
                 class="btn {modalSlice.enabled ? 'danger' : 'primary'}"
-                on:click={() => {
-                  dispatch({ type: 'TOGGLE_CELL_ENABLE', id: modalSlice.id });
-                }}
+                on:click={() => dispatch({ type: 'TOGGLE_CELL_ENABLE', id: modalSlice.id })}
               >
                 {modalSlice.enabled ? '🚫 Unassign Cell' : '✅ Enable Cell'}
               </button>
@@ -338,10 +383,6 @@
     box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
   }
 
-  .primary-apply:hover {
-    background: #059669 !important;
-  }
-
   .secondary-apply {
     background: #3b82f6 !important;
     color: white !important;
@@ -350,7 +391,7 @@
 
   .slicer-body {
     display: grid;
-    grid-template-columns: clamp(260px, 22vw, 300px) 1fr clamp(240px, 22vw, 280px);
+    grid-template-columns: clamp(260px, 22vw, 300px) 1fr clamp(240px, 22vw, 290px);
     flex: 1;
     gap: 12px;
     padding: 12px;
@@ -388,20 +429,126 @@
     gap: 8px;
   }
 
-  .previews-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .previews-list {
+  /* Right Group Covers List */
+  .group-covers-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
     padding-right: 4px;
   }
 
-  .slice-card {
+  .group-cover-card {
+    background: #111115;
+    border: 1px solid #27272a;
+    border-radius: 6px;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .group-cover-card:hover {
+    border-color: #0284c7;
+    background: #181822;
+  }
+
+  .group-cover-thumb {
+    width: 64px;
+    height: 64px;
+    background: #18181b;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .empty-cover {
+    font-size: 0.75rem;
+    color: #666;
+  }
+
+  .group-cover-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .group-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .group-count-badge {
+    font-size: 0.75rem;
+    color: #888;
+  }
+
+  .expand-btn {
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+
+  /* Full Grid Modal Window */
+  .group-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+    padding: 24px;
+  }
+
+  .group-modal-window {
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    width: 90vw;
+    max-width: 1000px;
+    height: 85vh;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    gap: 16px;
+  }
+
+  .group-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #27272a;
+    padding-bottom: 12px;
+  }
+
+  .header-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .group-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 14px;
+    padding-right: 6px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .uniform-slice-card {
     background: #111115;
     border: 1px solid #27272a;
     border-radius: 6px;
@@ -411,123 +558,42 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition: all 0.15s ease;
   }
 
-  .slice-card.active {
-    border-color: #3b82f6;
-    box-shadow: 0 0 6px rgba(59, 130, 246, 0.3);
+  .uniform-slice-card:hover {
+    border-color: #0284c7;
   }
 
-  .slice-card.disabled {
-    opacity: 0.5;
+  .uniform-slice-card.disabled {
+    opacity: 0.45;
     border-style: dashed;
   }
 
-  .slice-card-header {
+  .slice-card-top {
     display: flex;
     justify-content: space-between;
-    align-items: center;
     width: 100%;
     font-size: 0.75rem;
+    color: #aaa;
   }
 
-  .slice-badge {
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 600;
-    color: white;
-  }
-
-  .slice-dims {
-    color: #888;
-  }
-
-  .slice-preview-wrapper {
+  .slice-canvas-box {
     background: #18181b;
-    padding: 8px;
+    padding: 6px;
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
   }
 
-  .slice-card-footer {
+  .slice-card-actions {
     display: flex;
     justify-content: flex-end;
     width: 100%;
   }
 
-  .group-item-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 6px;
-    background: #09090b;
-    border: 1px solid #27272a;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .group-item-btn.active {
-    border-color: #0284c7;
-    background: #18283b;
-  }
-
-  .color-badge {
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-    flex-shrink: 0;
-  }
-
-  .directional-btns {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
-  }
-
-  .btn {
-    padding: 6px 12px;
-    background: #27272a;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-
-  .btn:hover { background: #3f3f46; }
-  .btn-sm { padding: 4px 8px; font-size: 0.75rem; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; }
-  .btn-xs { padding: 2px 6px; font-size: 0.7rem; background: #27272a; color: white; border: none; border-radius: 3px; cursor: pointer; }
-  .btn-xs.warning { background: #d97706; color: white; }
-  .btn-xs.primary { background: #0284c7; color: white; }
-
-  .danger { background: #dc2626 !important; }
-  .row { display: flex; align-items: center; }
-  .gap-4 { gap: 6px; }
-  .margin-top-4 { margin-top: 4px; }
-  .flex-1 { flex: 1; }
-  .width-100 { width: 100%; }
-
-  .row-inputs { display: flex; gap: 8px; }
-  .row-inputs label { font-size: 0.75rem; display: flex; align-items: center; gap: 4px; width: 50%; }
-
-  input[type="text"], input[type="number"] {
-    width: 100%;
-    padding: 4px 6px;
-    background: #09090b;
-    border: 1px solid #3f3f46;
-    color: white;
-    border-radius: 4px;
-  }
-
-  hr { border: 0; border-top: 1px solid #27272a; margin: 4px 0; }
-
+  /* Single Slice Inspection Modal */
   .modal-backdrop {
     position: fixed;
     inset: 0;
@@ -552,4 +618,26 @@
   .modal-header { display: flex; justify-content: space-between; align-items: center; }
   .modal-body { display: flex; gap: 20px; align-items: center; }
   .modal-info { display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; }
+
+  /* Utility Styles */
+  .group-item-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px; background: #09090b; border: 1px solid #27272a; color: white; border-radius: 4px; cursor: pointer; text-align: left; }
+  .group-item-btn.active { border-color: #0284c7; background: #18283b; }
+  .color-badge { width: 12px; height: 12px; border-radius: 3px; }
+  .directional-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .btn { padding: 6px 12px; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+  .btn:hover { background: #3f3f46; }
+  .btn-sm { padding: 4px 8px; font-size: 0.75rem; background: #27272a; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  .btn-xs { padding: 2px 6px; font-size: 0.7rem; background: #27272a; color: white; border: none; border-radius: 3px; cursor: pointer; }
+  .btn-xs.warning { background: #d97706; color: white; }
+  .btn-xs.primary { background: #0284c7; color: white; }
+  .danger { background: #dc2626 !important; }
+  .row { display: flex; align-items: center; }
+  .gap-4 { gap: 6px; }
+  .margin-top-4 { margin-top: 4px; }
+  .flex-1 { flex: 1; }
+  .width-100 { width: 100%; }
+  .row-inputs { display: flex; gap: 8px; }
+  .row-inputs label { font-size: 0.75rem; display: flex; align-items: center; gap: 4px; width: 50%; }
+  input[type="text"], input[type="number"] { width: 100%; padding: 4px 6px; background: #09090b; border: 1px solid #3f3f46; color: white; border-radius: 4px; }
+  hr { border: 0; border-top: 1px solid #27272a; margin: 4px 0; }
 </style>

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,7 +12,7 @@ import (
 	"image/png"
 	"math"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 
 	"pixelcreator/models"
@@ -20,35 +21,76 @@ import (
 )
 
 type App struct {
-	ctx      context.Context
-	projects []models.Project
-	nextID   int
+	ctx        context.Context
+	projects   []models.Project
+	worldScene models.WorldScene
+	nextID     int
 }
 
 func NewApp() *App {
 	app := &App{
-		projects: make([]models.Project, 0),
-		nextID:   1,
+		projects:   make([]models.Project, 0),
+		worldScene: models.NewWorldScene("world-default", "Prototype World", 960, 540),
+		nextID:     1,
 	}
 
 	sample := models.NewProject(app.nextID, "Hero Sprite", 16, 16)
 	app.nextID++
 
-	// Draw sample character body
 	for y := 4; y < 12; y++ {
 		for x := 4; x < 12; x++ {
 			sample.Frames[0].Pixels[y*16+x] = &models.Color{R: 0.9, G: 0.7, B: 0.2, A: 1.0}
 		}
 	}
-	// Eyes
 	sample.Frames[0].Pixels[6*16+6] = &models.Color{R: 0, G: 0, B: 0, A: 1.0}
 	sample.Frames[0].Pixels[6*16+9] = &models.Color{R: 0, G: 0, B: 0, A: 1.0}
-	// Mouth
 	for x := 6; x <= 9; x++ {
 		sample.Frames[0].Pixels[9*16+x] = &models.Color{R: 0.8, G: 0.2, B: 0.2, A: 1.0}
 	}
 
-	app.projects = append(app.projects, sample)
+	// Add sample background asset project
+	bgSample := models.NewProject(app.nextID, "World Background", 320, 180)
+	app.nextID++
+	for y := 0; y < 180; y++ {
+		for x := 0; x < 320; x++ {
+			if y > 120 {
+				bgSample.Frames[0].Pixels[y*320+x] = &models.Color{R: 0.2, G: 0.6, B: 0.3, A: 1.0}
+			} else {
+				bgSample.Frames[0].Pixels[y*320+x] = &models.Color{R: 0.15, G: 0.2, B: 0.35, A: 1.0}
+			}
+		}
+	}
+
+	app.projects = append(app.projects, sample, bgSample)
+
+	// Add initial entities to world scene
+	app.worldScene.Entities = append(app.worldScene.Entities,
+		models.WorldEntity{
+			ID:            "entity-bg-1",
+			ProjectID:     bgSample.ID,
+			Name:          bgSample.Name,
+			X:             160,
+			Y:             90,
+			ZIndex:        0,
+			ActiveGroupID: bgSample.Groups[0].ID,
+			Scale:         1.0,
+			Opacity:       1.0,
+			Playing:       true,
+		},
+		models.WorldEntity{
+			ID:            "entity-hero-1",
+			ProjectID:     sample.ID,
+			Name:          sample.Name,
+			X:             240,
+			Y:             130,
+			ZIndex:        1,
+			ActiveGroupID: sample.Groups[0].ID,
+			Scale:         3.0,
+			Opacity:       1.0,
+			Playing:       true,
+		},
+	)
+
 	return app
 }
 
@@ -69,11 +111,17 @@ func (a *App) SaveProject(project models.Project) {
 	}
 }
 
-func (a *App) CreateProject(name string, size int) models.Project {
+func (a *App) CreateProject(name string, width, height int) models.Project {
 	if name == "" {
 		name = fmt.Sprintf("Project #%d", a.nextID)
 	}
-	proj := models.NewProject(a.nextID, name, size, size)
+	if width <= 0 {
+		width = 16
+	}
+	if height <= 0 {
+		height = width
+	}
+	proj := models.NewProject(a.nextID, name, width, height)
 	a.nextID++
 	a.projects = append(a.projects, proj)
 	return proj
@@ -87,6 +135,68 @@ func (a *App) DeleteProject(id int) bool {
 		}
 	}
 	return false
+}
+
+// --- World Scene Persistence & RON/JSON Generation ---
+
+func (a *App) GetWorldScene() models.WorldScene {
+	return a.worldScene
+}
+
+func (a *App) SaveWorldScene(scene models.WorldScene) {
+	a.worldScene = scene
+}
+
+func (a *App) GenerateWorldJSON(scene models.WorldScene) (string, error) {
+	data, err := json.MarshalIndent(scene, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (a *App) GenerateWorldRON(scene models.WorldScene) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("WorldScene(\n"))
+	sb.WriteString(fmt.Sprintf("    id: \"%s\",\n", scene.ID))
+	sb.WriteString(fmt.Sprintf("    name: \"%s\",\n", scene.Name))
+	sb.WriteString(fmt.Sprintf("    dimensions: (%d, %d),\n", scene.Width, scene.Height))
+	sb.WriteString(fmt.Sprintf("    bg_color: \"%s\",\n", scene.BgColor))
+	sb.WriteString(fmt.Sprintf("    entities: [\n"))
+
+	for _, e := range scene.Entities {
+		sb.WriteString(fmt.Sprintf("        WorldEntity(\n"))
+		sb.WriteString(fmt.Sprintf("            id: \"%s\",\n", e.ID))
+		sb.WriteString(fmt.Sprintf("            project_id: %d,\n", e.ProjectID))
+		sb.WriteString(fmt.Sprintf("            name: \"%s\",\n", e.Name))
+		sb.WriteString(fmt.Sprintf("            position: (%.2f, %.2f),\n", e.X, e.Y))
+		sb.WriteString(fmt.Sprintf("            z_index: %d,\n", e.ZIndex))
+		sb.WriteString(fmt.Sprintf("            active_group_id: \"%s\",\n", e.ActiveGroupID))
+		sb.WriteString(fmt.Sprintf("            scale: %.2f,\n", e.Scale))
+		sb.WriteString(fmt.Sprintf("            flip_x: %t,\n", e.FlipX))
+		sb.WriteString(fmt.Sprintf("            flip_y: %t,\n", e.FlipY))
+		sb.WriteString(fmt.Sprintf("            opacity: %.2f,\n", e.Opacity))
+		sb.WriteString(fmt.Sprintf("        ),\n"))
+	}
+
+	sb.WriteString(fmt.Sprintf("    ],\n)"))
+	return sb.String()
+}
+
+func (a *App) ExportWorldToFile(content string, defaultName string) (string, error) {
+	savePath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export World Data",
+		DefaultFilename: defaultName,
+	})
+	if err != nil || savePath == "" {
+		return "", fmt.Errorf("export cancelled")
+	}
+
+	err = os.WriteFile(savePath, []byte(content), 0644)
+	if err != nil {
+		return "", err
+	}
+	return savePath, nil
 }
 
 func (a *App) ImportImageAsProject() (*models.Project, error) {
@@ -117,7 +227,6 @@ func (a *App) ImportImageAsProject() (*models.Project, error) {
 	proj := models.NewProject(a.nextID, "Imported Image", w, h)
 	a.nextID++
 
-	// Overwrite the default frame with imported pixels
 	frame := &proj.Frames[0]
 	frame.Pixels = make([]*models.Color, w*h)
 	for y := 0; y < h; y++ {
@@ -139,7 +248,6 @@ func (a *App) ImportImageAsProject() (*models.Project, error) {
 }
 
 func (a *App) ImportImageToFrame(projectID int) (*models.PixelFrame, error) {
-	// Find the project to get dimensions
 	var proj *models.Project
 	for i := range a.projects {
 		if a.projects[i].ID == projectID {
@@ -245,8 +353,6 @@ func (a *App) ExportFrameAsPNG(frame models.PixelFrame, scale int) (string, erro
 	return savePath, nil
 }
 
-// --- SPRITE SLICER & DOWNSCALER BACKEND METHODS ---
-
 func (a *App) LoadSpriteSheet() (*models.PixelFrame, error) {
 	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Load Sprite Sheet Image",
@@ -295,7 +401,6 @@ func (a *App) GenerateSampleSpriteSheet() models.PixelFrame {
 	frameID := fmt.Sprintf("sample-%d", time.Now().UnixMilli())
 	sheet := models.NewPixelFrame(frameID, 128, 128, "")
 
-	// Circle - Red (top-left)
 	for y := 12; y < 52; y++ {
 		for x := 12; x < 52; x++ {
 			dx := math.Pow(float64(x-32), 2)
@@ -305,8 +410,6 @@ func (a *App) GenerateSampleSpriteSheet() models.PixelFrame {
 			}
 		}
 	}
-
-	// Circle - Green (top-right)
 	for y := 8; y < 56; y++ {
 		for x := 72; x < 120; x++ {
 			dx := math.Pow(float64(x-96), 2)
@@ -316,8 +419,6 @@ func (a *App) GenerateSampleSpriteSheet() models.PixelFrame {
 			}
 		}
 	}
-
-	// Diamond - Blue (bottom-left)
 	for y := 72; y < 120; y++ {
 		for x := 8; x < 56; x++ {
 			dist := math.Abs(float64(x-32)) + math.Abs(float64(y-96))
@@ -326,8 +427,6 @@ func (a *App) GenerateSampleSpriteSheet() models.PixelFrame {
 			}
 		}
 	}
-
-	// Cross - Yellow (bottom-right)
 	for y := 72; y < 120; y++ {
 		for x := 72; x < 120; x++ {
 			dx := math.Abs(float64(x - 96))
@@ -381,7 +480,6 @@ func (a *App) PackFramesToSheet(proj models.Project) PackResult {
 			}
 		}
 
-		// Derive group name from project groups
 		groupName := "Main"
 		for _, g := range proj.Groups {
 			if g.ID == frame.GroupID {
@@ -402,9 +500,4 @@ func (a *App) PackFramesToSheet(proj models.Project) PackResult {
 	}
 
 	return PackResult{Sheet: sheet, Selections: selections}
-}
-
-// genID generates a timestamped ID string.
-func genID(prefix string, idx int) string {
-	return prefix + "-" + strconv.FormatInt(time.Now().UnixMilli(), 10) + "-" + strconv.Itoa(idx)
 }

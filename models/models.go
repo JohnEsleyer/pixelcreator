@@ -10,7 +10,7 @@ type Color struct {
 type Group struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
-	Color string `json:"color"` // Hex color code
+	Color string `json:"color"`
 }
 
 type PixelFrame struct {
@@ -19,6 +19,7 @@ type PixelFrame struct {
 	Height  int      `json:"height"`
 	Pixels  []*Color `json:"pixels"`
 	GroupID string   `json:"groupId"`
+	Tag     string   `json:"tag,omitempty"`
 }
 
 func NewPixelFrame(id string, w, h int, groupID string) PixelFrame {
@@ -33,7 +34,7 @@ func NewPixelFrame(id string, w, h int, groupID string) PixelFrame {
 
 type SelectionGroup struct {
 	Name  string `json:"name"`
-	Color string `json:"color"` // Hex color code e.g. "#e63946"
+	Color string `json:"color"`
 }
 
 type SpriteSelection struct {
@@ -81,5 +82,42 @@ func NewProject(id int, name string, w, h int) Project {
 		FPS:                      8,
 		OnionSkinEnabled:         true,
 		Zoom:                     1.0,
+	}
+}
+
+// --- World Composer Scene & Entity Models ---
+
+type WorldEntity struct {
+	ID            string  `json:"id"`
+	ProjectID     int     `json:"projectId"`
+	Name          string  `json:"name"`
+	X             float64 `json:"x"`
+	Y             float64 `json:"y"`
+	ZIndex        int     `json:"zIndex"`
+	ActiveGroupID string  `json:"activeGroupId"`
+	Scale         float64 `json:"scale"`
+	FlipX         bool    `json:"flipX"`
+	FlipY         bool    `json:"flipY"`
+	Opacity       float64 `json:"opacity"`
+	Playing       bool    `json:"playing"`
+}
+
+type WorldScene struct {
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Width    int           `json:"width"`
+	Height   int           `json:"height"`
+	BgColor  string        `json:"bgColor"`
+	Entities []WorldEntity `json:"entities"`
+}
+
+func NewWorldScene(id, name string, w, h int) WorldScene {
+	return WorldScene{
+		ID:       id,
+		Name:     name,
+		Width:    w,
+		Height:   h,
+		BgColor:  "#18181b",
+		Entities: make([]WorldEntity, 0),
 	}
 }
